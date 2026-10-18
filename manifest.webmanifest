@@ -1,0 +1,9 @@
+{
+  "name": "TheoHub \u2014 SDA Theology",
+  "short_name": "TheoHub",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f0e4",
+  "theme_color": "#777b50",
+  "description": "SDA sermons, Bible study, and theological research."
+}
