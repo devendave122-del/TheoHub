@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,16 +13,15 @@ app.use(express.json({ limit: '30kb' }));
 app.use('/api/', rateLimit({ windowMs: 60_000, limit: 12, standardHeaders: 'draft-7', legacyHeaders: false }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_PUBLISHABLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
   : null;
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, aiConfigured: Boolean(openai), authConfigured: Boolean(supabase) }));
-
+app.get('/api/health', (_req, res) => res.json({ ok: true, aiConfigured: Boolean(genAI), authConfigured: Boolean(supabase) }));
 app.post('/api/theoai', async (req, res) => {
   try {
-    if (!openai) return res.status(503).json({ error: 'AI service is not configured on the server yet.' });
+    if (!genAI) return res.status(503).json({ error: 'AI service is not configured on the server yet.' });
     if (!supabase) return res.status(503).json({ error: 'Account service is not configured on the server yet.' });
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     if (!token) return res.status(401).json({ error: 'Sign in is required.' });
@@ -40,8 +39,15 @@ app.post('/api/theoai', async (req, res) => {
       ? `Answer this theological question carefully for a Seventh-day Adventist study context: ${topic}. Give a concise answer, relevant Bible passages with contextual explanation, the common SDA understanding if relevant, alternate interpretations if important, and sources or search terms for further verification. Do not invent citations.`
       : `Create a ${length.toLowerCase()} Bible study guide for ${audience} on: ${topic}. Include a key passage, context, learning goals, observation/interpretation/application sections, discussion questions, SDA theological connections where relevant, and a closing application. Mark suggestions for further verification.`;
 
-    const result = await openai.responses.create({ model: process.env.OPENAI_MODEL || 'gpt-5-mini', instructions: system, input: task, max_output_tokens: length === 'Detailed' ? 3000 : length === 'Short' ? 1000 : 2000 });
-    res.json({ text: result.output_text || 'No text response was returned.' });
+const result = await genAI.models.generateContent({
+  model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  contents: task,
+  config: {
+    systemInstruction: system,
+    maxOutputTokens: length === 'Detailed' ? 3000 : length === 'Short' ? 1000 : 2000
+  }
+});
+    res.json({ text: result.text || 'No text response was returned.' });
   } catch (error) {
     console.error('TheoAI error:', error?.message || error);
     res.status(500).json({ error: 'TheoAI could not complete the request. Please try again later.' });
